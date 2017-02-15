@@ -139,10 +139,6 @@ public interface Job : CoroutineContext.Element {
      * cancelled as a result of this invocation and `false` otherwise
      * (if it was already _completed_ or if it is [NonCancellable]).
      * Repeated invocations of this function have no effect and always produce `false`.
-     *
-     * When cancellation has a clear reason in the code, an instance of [CancellationException] should be created
-     * at the corresponding original cancellation site and passed into this method to aid in debugging by providing
-     * both the context of cancellation and text description of the reason.
      */
     public fun cancel(cause: Throwable? = null): Boolean
 
@@ -247,7 +243,7 @@ public open class JobSupport(active: Boolean) : AbstractCoroutineContextElement(
        FINAL_C    Cancelled    : Completed     cancelled (final state)
        FINAL_F    Failed       : Completed     failed for other reason (final state)
        FINAL_R    <any>        : Completed     produced some result
-       
+
        === Transitions ===
 
            New states      Active states     Inactive states
@@ -326,15 +322,18 @@ public open class JobSupport(active: Boolean) : AbstractCoroutineContextElement(
     }
 
     /**
-     * Tries to update current [state] of this job.
+     * Update current [state] of this job.
      */
-    internal fun updateState(expect: Any, update: Any?, mode: Int): Boolean {
+    protected fun updateState(expect: Any, update: Any?, mode: Int): Boolean {
         if (!tryUpdateState(expect, update)) return false
         completeUpdateState(expect, update, mode)
         return true
     }
 
-    internal fun tryUpdateState(expect: Any, update: Any?): Boolean  {
+    /**
+     * Tries to begin update of the current [state] of this job.
+     */
+    protected fun tryUpdateState(expect: Any, update: Any?): Boolean  {
         require(expect is Incomplete && update !is Incomplete) // only incomplete -> completed transition is allowed
         if (!STATE.compareAndSet(this, expect, update)) return false
         // Unregister from parent job
@@ -342,7 +341,10 @@ public open class JobSupport(active: Boolean) : AbstractCoroutineContextElement(
         return true // continues in completeUpdateState
     }
 
-    internal fun completeUpdateState(expect: Any, update: Any?, mode: Int) {
+    /**
+     * Completes update of the current [state] of this job.
+     */
+    protected fun completeUpdateState(expect: Any, update: Any?, mode: Int) {
         // Invoke completion handlers
         val cause = (update as? CompletedExceptionally)?.cause
         var completionException: Throwable? = null
@@ -621,6 +623,8 @@ public open class JobSupport(active: Boolean) : AbstractCoroutineContextElement(
 
     /**
      * Override for post-completion actions that need to do something with the state.
+     * @param state the final state
+     * @param mode the integer that was passed to [updateState] function
      */
     protected open fun afterCompletion(state: Any?, mode: Int) {}
 
